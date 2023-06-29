@@ -1,5 +1,3 @@
-# Flappy Bird source code taken from https://github.com/russs123/flappy_bird
-
 import pygame
 from pygame.locals import *
 import random
@@ -32,40 +30,61 @@ def reset_game():
     score = 0
     return score
 
+# Number of episodes to run
+num_episodes = 100
 
+# List to store cumulative rewards for each episode
+episode_rewards = []
+
+# Q-learning parameters
+epsilon = 1.0
+epsilon_decay = 0.995
+epsilon_min = 0.01
+alpha = 0.5
+gamma = 0.99
+
+# Discretization parameters
+num_discrete_states = 10
+num_discrete_velocities = 10
+num_discrete_pipe_positions = 10
+
+# Q-table initialization
+num_actions = 2
+q_table = np.zeros((num_discrete_states, num_discrete_velocities, num_discrete_pipe_positions + 1, num_actions))
+
+# Function to discretize a continuous value into a discrete value
+def discretize(value, num_discrete_values):
+    return int(value * num_discrete_values)
+
+# Function to choose action based on epsilon-greedy exploration
+def choose_action(state):
+    if np.random.uniform() < epsilon:
+        return np.random.randint(num_actions)
+    else:
+        return np.argmax(q_table[state])
+
+# Function to update Q-table based on observed reward and next state
+def update_q_table(state, action, reward, next_state):
+    max_q = np.max(q_table[next_state])
+    q_table[state][action] += alpha * (reward + gamma * max_q - q_table[state][action])
 
 # GAME VARIABLES
 font = pygame.font.SysFont('Bauhaus 93', 60)
-# define color
 white = (255, 255, 255)
 scroll_ground = 0
-# every itteration ground moves by 4 pixels
-scroll_speed = 4  
-# not start the game imediately 
+scroll_speed = 4
 flying = False
-# check for game over
 dead = False
-# gap in between the pipes
 pipe_gap = 170
-# how often new pipes spawn 1500 milliseconds
 pipe_frequency = 1500
-# whenever the game is first initialized
 last_pipe = pygame.time.get_ticks() - pipe_frequency
-# keep track of core
 score = 0
-# check if a pipe has been surpased
 pass_pipe = False
-
-# Q-LEARNING VARIABLES
-distance_to_pipe = 0
-# bird actions
-ACTION_FLAP = 0
-ACTION_NOTHING = 1
-
+last_pipe_time = pygame.time.get_ticks() 
+gravity = 0.5
 
 class Bird(pygame.sprite.Sprite):
     def __init__(self, x, y):
-        # inheriting update and draw functins from pygame.Sprite
         pygame.sprite.Sprite.__init__(self)
         self.images = []
         self.index = 0
@@ -77,60 +96,110 @@ class Bird(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.center = [x, y]
 
-        # add gravity
-        self.velocity = 0
-        self.clicked = False
+        # Initialize Q-learning parameters
+        self.learning_rate = 0.1
+        self.discount_factor = 0.99
+        self.epsilon = 1.0
+        self.epsilon_decay = 0.999
+        self.epsilon_min = 0.01
 
-    # retrieve the current state of the bird
-    def get_state(self):
-        return (self.rect.y, distance_to_pipe, self.velocity)
+        # Initialize state
+        self.state = None
+        self.last_state = None
+        self.action = None
+        self.last_action = None
+
+        # Initialize velocity
+        self.vel_y = 0
 
 
-    # update function handles the bird animation
-    def update(self):
-
-        if flying == True:
-            self.velocity += 0.5
-            if self.velocity > 8:
-                self.velocity = 8
+    def update(self, flying):
+        if flying:
+            self.vel_y+= gravity
+            if self.vel_y > 8:
+                self.vel_y = 8
             if self.rect.bottom < 768:
-                self.rect.y += int(self.velocity)
-
-        if dead == False:
-            # handle flapping
-            if pygame.mouse.get_pressed()[0] == 1 and self.clicked == False:
-                self.clicked = True
-                self.velocity = -10
-
-            # only being able to flap once mouse has been released 
-            if pygame.mouse.get_pressed()[0] == 0:
-                self.clicked = False
-
-            self.counter += 1
-            flap_cool_down = 5
-
-            if self.counter > flap_cool_down:
-                self.counter = 0
-                self.index += 1
-                if self.index >= len(self.images):
-                    self.index = 0
-            self.image = self.images[self.index]
-
-            # rotate the bird
-            self.image = pygame.transform.rotate(self.images[self.index], -2 * self.velocity)
+                self.rect.y += int(self.vel_y)
+            # Check if bird has hit the ground
+            if self.rect.y > 768:
+                dead = True
+                flying = False
         else:
-            # the bird faces the ground
-            self.image = pygame.transform.rotate(self.images[self.index], -90)
+            # Check if bird is above the ceiling
+            if self.rect.y < 0:
+                self.rect.y = 0
 
+        # Update Q-learning state
+        self.update_state()
 
+        # Choose action
+        self.last_action = self.action
+        self.action = choose_action(self.state)
+
+        # Update Q-table
+        if self.last_state is not None and self.last_action is not None:
+            update_q_table(self.last_state, self.last_action, 0, self.state)
+
+        # Update last state and last action
+        self.last_state = self.state
+        self.last_action = self.action
+
+        # Update index to animate bird
+        self.counter += 1
+        flap_cooldown = 5
+        if self.counter > flap_cooldown:
+            self.counter = 0
+            self.index += 1
+            if self.index >= len(self.images):
+                self.index = 0
+        self.image = self.images[self.index]
+
+        # Rotate the bird
+        self.image = pygame.transform.rotate(self.images[self.index], self.vel_y * -2)
+        self.rect = self.image.get_rect(center=(self.rect.centerx, self.rect.centery))
+
+    def jump(self):
+        self.vel_y = -10
+
+    def update_state(self):
+        # Discretize position, velocity, and pipe position
+        discrete_pos = discretize(self.rect.y / screen_height, num_discrete_states)
+        discrete_vel = discretize(self.vel_y / 10, num_discrete_velocities)
+        pipe_pos = self.get_closest_pipe_position()
+        discrete_pipe_pos = discretize(pipe_pos / screen_width, num_discrete_pipe_positions)
+
+        # Combine state variables into a tuple
+        self.state = (discrete_pos, discrete_vel, discrete_pipe_pos)
+
+    def get_closest_pipe_position(self):
+        closest_pipe_pos = screen_width
+        for pipe in pipe_group:
+            if pipe.rect.x > self.rect.centerx:
+                closest_pipe_pos = min(closest_pipe_pos, pipe.rect.x)
+        return closest_pipe_pos
+
+    def choose_action(self):
+        if np.random.uniform() < self.epsilon:
+            return np.random.randint(num_actions)
+        else:
+            return np.argmax(q_table[self.state])
+
+    def update_q_table(self, reward, next_state):
+        max_q = np.max(q_table[next_state])
+        q_table[self.state][self.action] += self.learning_rate * (reward + self.discount_factor * max_q - q_table[self.state][self.action])
+        
+# Creating bird class
+bird_group = pygame.sprite.Group()
+flappy = Bird(100, int(screen_height/2))
+bird_group.add(flappy)
 
 class Pipe(pygame.sprite.Sprite):
     def __init__(self, x, y, position):
         pygame.sprite.Sprite.__init__(self)
         self.image = pygame.image.load('img/pipe.png')
         self.rect = self.image.get_rect()
-        
-        # position 1 is from the top, -1 is from the bottom
+        self.passed = False  # Initialize the 'passed' attribute to False
+        # position variable determines if the pipe is coming from the bottom or top
         if position == 1:
             self.image = pygame.transform.flip(self.image, False, True)
             self.rect.bottomleft = [x, y - int(pipe_gap/2)]
@@ -142,253 +211,87 @@ class Pipe(pygame.sprite.Sprite):
         if self.rect.right < 0:
             self.kill()
 
-class Button():
-    def __init__(self, x, y, image):
-        self.image = image
-        self.rect = self.image.get_rect()
-        self.rect.topleft = (x,y)
-
-    
-    def draw(self):
-        action = False
-        # get mouse position
-        position = pygame.mouse.get_pos()
-
-        # check if mouse is over the button
-        if self.rect.collidepoint(position):
-            if pygame.mouse.get_pressed()[0] == 1:
-                action = True
-
-        # draw restart button
-        screen.blit(self.image, (self.rect.x, self.rect.y))
-
-        return action
-
-
-# bird group keeps track of all the sprites added to it
-bird_group = pygame.sprite.Group()
-
-# pipe group keeps track of all the pipes added 
+# Create pipe group
 pipe_group = pygame.sprite.Group()
 
-flappy = Bird(100, int(screen_height/2))
 
-bird_group.add(flappy)
+run = True
+while run:
+    clock.tick(fps)
+    screen.blit(background_img, (0, 0))
 
-# create restart button instance
-button = Button(screen_width // 2 - 60, screen_height // 2 + 350, button_img)
+    # Update and draw pipes
+    pipe_group.draw(screen)
+    pipe_group.update()
 
+    # Draw ground
+    scroll_ground -= scroll_speed
+    if abs(scroll_ground) > 35:
+        scroll_ground = 0
+    screen.blit(ground_img, (scroll_ground, 768))
 
-# Q-LEARNING ALGORITHM
+    # Draw and update birds
+    bird_group.draw(screen)
+    bird_group.update(flying)
 
-num_states = 100  # Define the appropriate number of states based on your game
-num_actions = 2  # Two actions: flap or do nothing
+    current_time = pygame.time.get_ticks()
+    if current_time - last_pipe >= pipe_frequency:
+        pipe_x = screen_width
+        pipe_y = random.randint(300, 600)  # Adjust the range as needed
+        top_pipe = Pipe(pipe_x, pipe_y, -1)
+        bottom_pipe = Pipe(pipe_x, pipe_y, 1)
+        pipe_group.add(top_pipe, bottom_pipe)
+        last_pipe = current_time
 
-# initialize Q-table
-q_table = np.zeros((num_states, num_actions))
+    # Check collision with pipes
+    if pygame.sprite.groupcollide(bird_group, pipe_group, False, False):
+        dead = True
 
-# exploration-exploitation trade-off
-epsilon = 1.0  
-# learning rate
-alpha = 0.1  
-# discount factor
-gamma = 0.9  
-
-def discretize_state(state):
-    # Discretize the continuous state variables into a single integer value
-    position, distance, velocity = state
-    position_bins = np.linspace(0, screen_height, num_states)
-    position_idx = np.digitize(position, position_bins)
-    return position_idx
-
-def select_action(state):
-    if np.random.uniform() < epsilon:
-        # Explore: Randomly select an action
-        action = np.random.choice([ACTION_FLAP, ACTION_NOTHING])
-    else:
-        # Exploit: Select the action with the highest Q-value for the current state
-        q_values = q_table[state]
-        action = np.argmax(q_values)
-    return action
-
-def calculate_reward():
-    if dead:
-        # negative reward if the bird hits a pipe or the ground
-        return -100  
-
-    if pass_pipe:
-        # positive reward if the bird successfully passes through a gap
-        return 10  
-
-    # calculate intermediate rewards based on proximity to pipes or bird's height
-    if len(pipe_group.sprites()) > 0:
-        pipe_distance = pipe_group.sprites()[0].rect.x - flappy.rect.x
-        bird_height = flappy.rect.y
-
-        if pipe_distance < 100 and bird_height < 200:
-            #  negative reward for being close to a pipe and at a low height
-            return -1  
-
-        if pipe_distance > 200 and bird_height > 500:
-            # positive reward for being far from a pipe and at a high height
-            return 1 
-    
-    # no significant reward for other states
-    return 0  
-
-FLAP_POWER = 10
-GRAVITY = 0.5
-
-def calculate_next_state(current_state, action):
-    # Convert the current state from a NumPy array to a tuple
-    current_state = tuple(current_state)
-
-    # Get the current position, distance, and velocity from the current state
-    current_position, current_distance, current_velocity = current_state
-
-    # Update the position based on the current velocity and action taken
-    if action == ACTION_FLAP:
-        # Flap action: decrease the vertical position (move the bird up)
-        new_position = current_position - FLAP_POWER
-    else:
-        # Do nothing action: maintain the current vertical position
-        new_position = current_position
-
-    # Update the distance to the next pipe by moving it closer based on the scroll speed
-    new_distance = current_distance - scroll_speed
-
-    # Update the velocity by applying gravity
-    new_velocity = current_velocity + GRAVITY
-
-    # Return the updated state as a tuple
-    return (new_position, new_distance, new_velocity)
-
-
-# how many times we test 
-num_episodes = 1000
-
-# Run the game
-for episode in range(num_episodes):
-    # Get initial state
-    state = flappy.get_state()  
-    state_idx = discretize_state(state)
-    
-    run = True
-    # game starts running, while not interrupted
-    while run:   
-
-        clock.tick(fps)
-
-        # in pygame we use blit to display images
-        screen.blit(background_img, (0, 0))    
-
-        # calculate distance to next pipe
-        if len(pipe_group) > 0:
-            distance_to_pipe = pipe_group.sprites()[0].rect.x - flappy.rect.x
-
-        # get the state representation
-        state = flappy.get_state()
-        state_idx = discretize_state(state)
-
-        # select action using your Q-learning algorithm or AI agent
-        action = select_action(state_idx)  
-
-        if action == ACTION_FLAP:
-            # flap 
-            flying = True
-            next_state = calculate_next_state(state_idx, ACTION_FLAP)
-        elif action == ACTION_NOTHING:
-            # do nothing
-            next_state = calculate_next_state(state_idx, ACTION_NOTHING)
-            pass
-
-        # calculate the reward based on the game state
-        reward = calculate_reward()  
-
-        # Update Q-values
-        q_value = q_table[state_idx][action]
-        max_q_value = np.max(q_table[next_state])
-        td_target = reward + gamma * max_q_value
-        td_error = td_target - q_value
-        updated_q_value = q_value + alpha * td_error
-        q_table[state][action] = updated_q_value
-
-        # draw bird
-        bird_group.draw(screen)
-        bird_group.update()
-
-        # draw pipes
-        pipe_group.draw(screen)
-
-        # create the ground to be scrolable
-        screen.blit(ground_img, (scroll_ground, 768))
-
-
-        # check the score
-        if len(pipe_group) > 0:
-            if bird_group.sprites()[0].rect.left > pipe_group.sprites()[0].rect.left\
-            and  bird_group.sprites()[0].rect.right < pipe_group.sprites()[0].rect.right\
-            and pass_pipe == False:
+    if not dead:
+        # Check if bird has passed the pipe
+        for pipe in pipe_group:
+            if pipe.rect.right < flappy.rect.left and not pipe.passed:
+                pipe.passed = True
                 pass_pipe = True
-            if pass_pipe == True:
-                if bird_group.sprites()[0].rect.left > pipe_group.sprites()[0].rect.right:
-                    score += 1
-                    pass_pipe = False
 
-        draw_text(str(score), font, white, int(screen_width / 2), 25)
+        # Update score
+        if pass_pipe:
+            score += 1
+            pass_pipe = False
 
-        # check if the bird has hit a pipe
-        if pygame.sprite.groupcollide(bird_group, pipe_group, False, False) or flappy.rect.top < 0:
-            dead = True
+        # Update Q-learning state and choose action
+        flappy.update_state()
+        action = flappy.choose_action()
 
+        # Apply action
+        if action == 1:
+            flying = True
+            flappy.jump()
+        else:
+            flying = False
 
-        # check if the bird has hit the gtound
-        if flappy.rect.bottom >= 768:
-            dead = True
-            flying = False  
-        
-        # game is running
-        if dead == False and flying == True:
-        
-            # generate new pipes
-            time_now = pygame.time.get_ticks()
-            if time_now - last_pipe > pipe_frequency:
-                pipe_height = random.randint(-100, 100)
-                bottom_pipe = Pipe(screen_width, int(screen_height/2) + pipe_height, -1)
-                top_pipe = Pipe(screen_width, int(screen_height/2) + pipe_height, 1)
-                pipe_group.add(bottom_pipe)
-                pipe_group.add(top_pipe)
-                last_pipe = time_now
+        # Update Q-table
+        if flappy.last_state is not None and flappy.last_action is not None:
+            flappy.update_q_table(0, flappy.state)
 
-            scroll_ground -= scroll_speed
-            # once it exceeds the screen width, restart image position
-            if abs(scroll_ground) > 35:
-                scroll_ground = 0 
+        # Update last state and last action
+        flappy.last_state = flappy.state
+        flappy.last_action = action
 
-            pipe_group.update()
-        
+        # Draw score
+        draw_text(str(score), font, white, int(screen_width / 2), 20)
 
-        # check if game over and reset
-        if dead == True:
-            if button.draw() == True:
-                dead = False
-                score = reset_game()
+    # Check if the bird has hit the ground
+    if flappy.rect.y > 768 or dead:
+        dead = False
+        flying = False
+        episode_rewards.append(score)
+        score = reset_game()
 
+    # Decay epsilon
+    if epsilon > epsilon_min:
+        epsilon *= epsilon_decay
 
-        # key event handling
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                run = False
-            if event.type == pygame.MOUSEBUTTONDOWN and flying == False and dead == False:
-                # Flap action
-                flying = True
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE and flying == False and dead == False:
-                    # Flap action
-                    flying = True
+    pygame.display.update()
 
-        # nothing gets displayed unless we update the screen
-        pygame.display.update()    
-
-
-    pygame.quit()
+pygame.quit()
