@@ -1,6 +1,5 @@
 import pygame
 import os
-from pygame.locals import *
 import random
 import numpy as np
 
@@ -38,11 +37,11 @@ num_episodes = 1000
 episode_rewards = []
 
 # Q-learning parameters
-epsilon = 1.0
-epsilon_decay = 0.995
-epsilon_min = 0.01
-alpha = 0.5
-gamma = 0.99
+epsilon = 0.3
+epsilon_decay = 0.001
+epsilon_min = 0.1
+alpha = 0.8
+gamma = 0.3
 
 # Discretization parameters
 num_discrete_states = 10
@@ -96,11 +95,11 @@ class Bird(pygame.sprite.Sprite):
         self.rect.center = [x, y]
 
         # Initialize Q-learning parameters
-        self.learning_rate = 0.8
-        self.discount_factor = 0.3
-        self.epsilon = 0.3
-        self.epsilon_decay = 0.001
-        self.epsilon_min = 0.1
+        self.learning_rate = alpha
+        self.discount_factor = gamma
+        self.epsilon = epsilon
+        self.epsilon_decay = epsilon_decay
+        self.epsilon_min = epsilon_min
 
         # Initialize state
         self.state = None
