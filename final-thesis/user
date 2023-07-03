@@ -117,8 +117,8 @@ class Bird(pygame.sprite.Sprite):
         # Record game data
         if game_started and not dead:
             bird_data = {
-                'x': self.rect.x,
                 'y': self.rect.y,
+                'velocity': self.velocity,
                 'clicked': self.clicked,
                 'dead': dead
             }
