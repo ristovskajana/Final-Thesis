@@ -1,5 +1,4 @@
 import pygame
-from pygame.locals import *
 import random
 import json
 
@@ -28,7 +27,13 @@ def reset_game():
     flappy.rect.x = 100
     flappy.rect.y = int(screen_height/2)
     score = 0
+    # Save game data to a file
+    with open(f'game_data_{game_session}.json', 'w') as file:
+        json.dump(game_data, file)
+            
+    print(f"Game data for game session {game_session} saved successfully!")
     game_data.clear()  # Clear game data when resetting the game
+    
     return score
 
 # GAME VARIABLES
@@ -188,7 +193,11 @@ button = Button(screen_width // 2 - 60, screen_height // 2 + 350, button_img)
 run = True
 
 # Flag to indicate if the game has started
-game_started = False  
+game_started = False
+
+# Counter for game sessions
+game_session = 1
+
 while run:
     clock.tick(fps)
 
@@ -248,11 +257,12 @@ while run:
             scroll_ground = 0
 
         pipe_group.update()
-    
+
     if game_started and not dead:
         # Record game data
         game_data.append({
             'bird': {
+                'x': flappy.rect.x,
                 'y': flappy.rect.y,
                 'clicked': flappy.clicked,
                 'dead': dead,
@@ -272,6 +282,7 @@ while run:
             game_started = False
             score = reset_game()
 
+            game_session += 1
 
     # key event handling
     for event in pygame.event.get():
@@ -286,11 +297,3 @@ while run:
     pygame.display.update()
 
 pygame.quit()
-
-# Save game data to a file
-import json
-
-with open('game_data.json', 'w') as file:
-    json.dump(game_data, file)
-
-print("Game data saved successfully!")
