@@ -113,16 +113,20 @@ class Bird(pygame.sprite.Sprite):
         else:
             # the bird faces the ground
             self.image = pygame.transform.rotate(self.images[self.index], -90)
+        
+        # Update the X position of the bird
+        self.rect.x = 100  # Set the desired X position here
 
         # Record game data
         if game_started and not dead:
             bird_data = {
                 'y': self.rect.y,
-                'velocity': self.velocity,
+                'x': self.rect.x,
                 'clicked': self.clicked,
                 'dead': dead
             }
             game_data.append(bird_data)
+            
 
 
 class Pipe(pygame.sprite.Sprite):
