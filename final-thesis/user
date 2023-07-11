@@ -13,7 +13,6 @@ screen_height = 936
 screen = pygame.display.set_mode((screen_width, screen_height))
 pygame.display.set_caption('Flappy Bird')
 
-# LOADING ALL IMAGES
 background_img = pygame.image.load('img/bg.png')
 ground_img = pygame.image.load('img/ground.png')
 button_img = pygame.image.load('img/restart.png')
@@ -36,26 +35,16 @@ def reset_game():
     
     return score
 
-# GAME VARIABLES
 font = pygame.font.SysFont('Bauhaus 93', 60)
-# define color
 white = (255, 255, 255)
 scroll_ground = 0
-# every iteration ground moves by 4 pixels
 scroll_speed = 4
-# not start the game immediately
 flying = False
-# check for game over
 dead = False
-# gap in between the pipes
 pipe_gap = 170
-# how often new pipes spawn 1500 milliseconds
 pipe_frequency = 1500
-# whenever the game is first initialized
 last_pipe = pygame.time.get_ticks() - pipe_frequency
-# keep track of score
 score = 0
-# check if a pipe has been surpassed
 pass_pipe = False
 
 # Game data list
@@ -120,13 +109,47 @@ class Bird(pygame.sprite.Sprite):
         # Record game data
         if game_started and not dead:
             bird_data = {
-                'y': self.rect.y,
-                'x': self.rect.x,
-                'clicked': self.clicked,
-                'dead': dead
+                'horizontal_distance': flappy.horizontal_distance(),
+                'vertical_distance': flappy.vertical_distance(),
+                'clicked': flappy.clicked,
+                'dead': dead,
+                'score': score
             }
             game_data.append(bird_data)
             
+        
+    def get_closest_lower_pipe(self):
+        closest_lower_pipe = None
+        closest_lower_pipe_dist = float('inf')
+        for pipe in pipe_group:
+            if pipe.position == 1:
+                if pipe.rect.right + 35> self.rect.right:
+                    distance = (pipe.rect.right + 35) - self.rect.right
+                    if distance < closest_lower_pipe_dist:
+                        closest_lower_pipe_dist = distance
+                        closest_lower_pipe = pipe
+        return closest_lower_pipe
+
+    
+    def horizontal_distance(self):
+        closest_lower_pipe = self.get_closest_lower_pipe()
+        if closest_lower_pipe is not None:
+            x_distance = self.rect.right
+            distance = (closest_lower_pipe.rect.right - x_distance) + 35
+            return distance
+        else:
+            return float('inf')
+
+
+    def vertical_distance(self):
+        closest_lower_pipe = self.get_closest_lower_pipe()
+        if closest_lower_pipe is not None:
+            y_distance = self.rect.bottom
+            distance = (closest_lower_pipe.rect.bottom + pipe_gap) - y_distance
+            return distance
+        else:
+            return float('inf')
+
 
 
 class Pipe(pygame.sprite.Sprite):
@@ -134,8 +157,8 @@ class Pipe(pygame.sprite.Sprite):
         pygame.sprite.Sprite.__init__(self)
         self.image = pygame.image.load('img/pipe.png')
         self.rect = self.image.get_rect()
+        self.position = position  
 
-        # position 1 is from the top, -1 is from the bottom
         if position == 1:
             self.image = pygame.transform.flip(self.image, False, True)
             self.rect.bottomleft = [x, y - int(pipe_gap / 2)]
@@ -143,19 +166,10 @@ class Pipe(pygame.sprite.Sprite):
             self.rect.topleft = [x, y + int(pipe_gap / 2)]
 
     def update(self):
-        global game_data
 
         self.rect.x -= scroll_speed
         if self.rect.right < 0:
             self.kill()
-
-        # Record game data
-        if game_started and not dead:
-            pipe_data = {
-                'x': self.rect.x,
-                'y': self.rect.y
-            }
-            game_data.append(pipe_data)
 
 
 class Button():
@@ -166,86 +180,76 @@ class Button():
 
     def draw(self):
         action = False
-        # get mouse position
         position = pygame.mouse.get_pos()
 
-        # check if mouse is over the button
         if self.rect.collidepoint(position):
             if pygame.mouse.get_pressed()[0] == 1:
                 action = True
 
-        # draw restart button
         screen.blit(self.image, (self.rect.x, self.rect.y))
 
         return action
 
-
-# bird group keeps track of all the sprites added to it
 bird_group = pygame.sprite.Group()
 
-# pipe group keeps track of all the pipes added
 pipe_group = pygame.sprite.Group()
 
 flappy = Bird(100, int(screen_height / 2))
 
 bird_group.add(flappy)
 
-# create restart button instance
 button = Button(screen_width // 2 - 60, screen_height // 2 + 350, button_img)
 
-# game starts running, while not interrupted
 run = True
 
-# Flag to indicate if the game has started
 game_started = False
 
-# Counter for game sessions
 game_session = 1
 
 while run:
     clock.tick(fps)
-
-    # in pygame we use blit to display images
     screen.blit(background_img, (0, 0))
+    time_now = pygame.time.get_ticks()
 
-    # draw bird
-    bird_group.draw(screen)
-    bird_group.update()
-
-    # draw pipes
     pipe_group.draw(screen)
+    pipe_group.update()
 
-    # create the ground to be scrollable
+    # Draw ground
+    scroll_ground -= scroll_speed
+    if abs(scroll_ground) > 35:
+        scroll_ground = 0
     screen.blit(ground_img, (scroll_ground, 768))
 
-    # check the score
+    pipe_group.draw(screen)
+    pipe_group.update()
+
+
     if len(pipe_group) > 0:
-        if bird_group.sprites()[0].rect.left > pipe_group.sprites()[0].rect.left \
-                and bird_group.sprites()[0].rect.right < pipe_group.sprites()[0].rect.right \
-                and pass_pipe is False:
-            pass_pipe = True
-        if pass_pipe is True:
-            if bird_group.sprites()[0].rect.left > pipe_group.sprites()[0].rect.right:
-                score += 1
-                pass_pipe = False
+        for pipe in pipe_group:
+            if pipe.rect.right < (flappy.rect.right + 35) and pipe.passed == False:
+                pipe.passed = True
+                pass_pipe = True
+
+        if pass_pipe:
+            score += 1
+            pass_pipe = False
+
+            if score > high_score:
+                high_score = score
 
     draw_text(str(score), font, white, int(screen_width / 2), 25)
 
-    # check if the bird has hit a pipe
-    if pygame.sprite.groupcollide(bird_group, pipe_group, False, False) or flappy.rect.top < 0:
+    if pygame.sprite.groupcollide(bird_group, pipe_group, False, False) or flappy.rect.top < 0 :
         dead = True
         game_started = False
 
-    # check if the bird has hit the ground
     if flappy.rect.bottom >= 768:
         dead = True
         game_started = False
         flying = False
 
-    # game is running
     if dead is False and flying is True:
 
-        # generate new pipes
         time_now = pygame.time.get_ticks()
         if time_now - last_pipe > pipe_frequency:
             pipe_height = random.randint(-100, 100)
@@ -256,7 +260,6 @@ while run:
             last_pipe = time_now
 
         scroll_ground -= scroll_speed
-        # once it exceeds the screen width, restart image position
         if abs(scroll_ground) > 35:
             scroll_ground = 0
 
@@ -264,21 +267,15 @@ while run:
 
     if game_started and not dead:
         # Record game data
-        game_data.append({
-            'bird': {
-                'x': flappy.rect.x,
-                'y': flappy.rect.y,
-                'clicked': flappy.clicked,
-                'dead': dead,
-                'score': score
-            },
-            'pipes': [{
-                'x': pipe.rect.x,
-                'y': pipe.rect.y
-            } for pipe in pipe_group]
-        })
+        bird_data = {
+            'horizontal_distance': flappy.horizontal_distance(),
+            'vertical_distance': flappy.vertical_distance(),
+            'clicked': flappy.clicked,
+            'dead': dead,
+            'score': score
+        }
+        game_data.append(bird_data)
 
-    # check if game over and reset
     if dead is True:
         if button.draw() is True:
             dead = False
@@ -288,7 +285,6 @@ while run:
 
             game_session += 1
 
-    # key event handling
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             run = False
@@ -297,7 +293,6 @@ while run:
             flying = True
             flappy.clicked = True
 
-    # nothing gets displayed unless we update the screen
     pygame.display.update()
 
 pygame.quit()
