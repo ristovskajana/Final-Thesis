@@ -1,5 +1,6 @@
 import pygame
 import random
+import numpy as np
 import json
 
 pygame.init()
@@ -17,6 +18,20 @@ background_img = pygame.image.load('img/bg.png')
 ground_img = pygame.image.load('img/ground.png')
 button_img = pygame.image.load('img/restart.png')
 
+num_discrete_states = 250
+discretized_states = np.zeros(num_discrete_states)
+
+
+combinations = []
+for x in range(10):
+    for y in range(25):
+        combinations.append((x, y))
+
+integer_array = list(range(250))
+
+mapping = dict(zip(combinations, integer_array))
+
+
 def draw_text(text, font, color, x, y):
     img = font.render(text, True, color)
     screen.blit(img, (x, y))
@@ -26,14 +41,33 @@ def reset_game():
     flappy.rect.x = 100
     flappy.rect.y = int(screen_height/2)
     score = 0
-    # Save game data to a file
-    with open(f'game_data_{game_session}.json', 'w') as file:
-        json.dump(game_data, file)
-            
-    print(f"Game data for game session {game_session} saved successfully!")
+    flappy.clicked = False
+    flappy.last_state = None
+    flappy.state = None
     game_data.clear()  # Clear game data when resetting the game
     
     return score
+
+def discretize_horizontal(value):
+    bins1 = np.linspace(0, 400, 7)
+    bins2 = np.linspace(401, 790, 3)
+    if value <= 400:
+        discretized_value = np.digitize(value, bins1)
+    else:
+        if np.digitize(value, bins2) == 1:
+            discretized_value = 7
+        if np.digitize(value, bins2) == 2:
+            discretized_value = 8
+        if np.digitize(value, bins2) == 3:
+            discretized_value = 9
+    return discretized_value # Subtract 1 to convert bin index to range 0-8
+
+
+def discretize_vertical(value):
+    bins = np.linspace(0, 1200, 25)  # Shift the bins to positive range
+    shifted_value = value + 600  # Shift the value to positive range
+    discretized_value = np.digitize(shifted_value, bins)
+    return discretized_value -1 
 
 font = pygame.font.SysFont('Bauhaus 93', 60)
 white = (255, 255, 255)
@@ -66,6 +100,14 @@ class Bird(pygame.sprite.Sprite):
         # add gravity
         self.velocity = 0
         self.clicked = False
+        self.clicked_time = 0
+
+        self.state = None
+        # Initialize state
+        self.last_state = None
+        self.action = None
+        self.last_action = None
+        self.reward = 0
 
     def update(self):
         global game_data
@@ -105,17 +147,7 @@ class Bird(pygame.sprite.Sprite):
         
         # Update the X position of the bird
         self.rect.x = 100  # Set the desired X position here
-
         # Record game data
-        if game_started and not dead:
-            bird_data = {
-                'horizontal_distance': flappy.horizontal_distance(),
-                'vertical_distance': flappy.vertical_distance(),
-                'clicked': flappy.clicked,
-                'dead': dead,
-                'score': score
-            }
-            game_data.append(bird_data)
             
         
     def get_closest_lower_pipe(self):
@@ -149,6 +181,15 @@ class Bird(pygame.sprite.Sprite):
             return distance
         else:
             return float('inf')
+        
+    def update_state(self):
+        horizontal_distance = self.horizontal_distance()
+        vertical_distance = self.vertical_distance()
+
+        discrete_horizontal_distance = discretize_horizontal(horizontal_distance)
+        discrete_vertical_distance = discretize_vertical(vertical_distance)
+
+        self.state = mapping[(discrete_horizontal_distance, discrete_vertical_distance)]
 
 
 
@@ -203,53 +244,47 @@ button = Button(screen_width // 2 - 60, screen_height // 2 + 350, button_img)
 run = True
 
 game_started = False
+game_ended = False
 
 game_session = 1
 
 while run:
     clock.tick(fps)
+
     screen.blit(background_img, (0, 0))
-    time_now = pygame.time.get_ticks()
+
+    bird_group.draw(screen)
+    bird_group.update()
 
     pipe_group.draw(screen)
-    pipe_group.update()
 
-    # Draw ground
-    scroll_ground -= scroll_speed
-    if abs(scroll_ground) > 35:
-        scroll_ground = 0
     screen.blit(ground_img, (scroll_ground, 768))
 
-    pipe_group.draw(screen)
-    pipe_group.update()
-
-
     if len(pipe_group) > 0:
-        for pipe in pipe_group:
-            if pipe.rect.right < (flappy.rect.right + 35) and pipe.passed == False:
-                pipe.passed = True
-                pass_pipe = True
-
-        if pass_pipe:
-            score += 1
-            pass_pipe = False
-
-            if score > high_score:
-                high_score = score
-
+        if bird_group.sprites()[0].rect.left > pipe_group.sprites()[0].rect.left \
+                and bird_group.sprites()[0].rect.right < pipe_group.sprites()[0].rect.right \
+                and pass_pipe is False:
+            pass_pipe = True
+        if pass_pipe is True:
+            if bird_group.sprites()[0].rect.left > pipe_group.sprites()[0].rect.right:
+                score += 1
+                pass_pipe = False
     draw_text(str(score), font, white, int(screen_width / 2), 25)
+
 
     if pygame.sprite.groupcollide(bird_group, pipe_group, False, False) or flappy.rect.top < 0 :
         dead = True
+        flying = False  
+        next_state = None
         game_started = False
 
     if flappy.rect.bottom >= 768:
         dead = True
-        game_started = False
         flying = False
+        next_state = None
+        game_started = False
 
     if dead is False and flying is True:
-
         time_now = pygame.time.get_ticks()
         if time_now - last_pipe > pipe_frequency:
             pipe_height = random.randint(-100, 100)
@@ -265,22 +300,64 @@ while run:
 
         pipe_group.update()
 
-    if game_started and not dead:
-        # Record game data
-        bird_data = {
-            'horizontal_distance': flappy.horizontal_distance(),
-            'vertical_distance': flappy.vertical_distance(),
-            'clicked': flappy.clicked,
-            'dead': dead,
-            'score': score
-        }
-        game_data.append(bird_data)
+        if flappy.last_state == None and game_data:
+            if flappy.clicked:
+                flappy.action = 1
+                flappy.clicked = 0
+            else:
+                flappy.action = 0
 
-    if dead is True:
+            flappy.update()
+            flappy.update_state()
+            flappy.last_state = flappy.state
+        else:
+            if dead == False and game_started == True:
+                flappy.last_state = flappy.state
+                if flappy.clicked:
+                    flappy.action = 1
+                    flappy.clicked = 0
+                else:
+                    flappy.action = 0
+                flappy.update()
+                flappy.update_state()
+                flappy.reward = 10
+                next_state = flappy.state  # Update next state
+                bird_data = {
+                    'Current state': flappy.last_state,
+                    'Action' : flappy.action,
+                    'Reward' : flappy.reward,
+                    'Next state' : next_state,
+                    'Score': score
+                }
+                game_data.append(bird_data)
+
+
+    if dead == True:
+        next_state = None
+        flappy.reward = -1000
+        next_state = None # Update next state
+        if game_ended == False: 
+            bird_data = {
+                'Current state': flappy.last_state,
+                'Action' : flappy.action,
+                'Reward' : flappy.reward,
+                'Next state' : next_state,
+                'Score': score
+            }
+            game_data.append(bird_data)
+            game_ended = True
+
         if button.draw() is True:
             dead = False
+            flying = False
             # Stop recording data if the bird is dead
             game_started = False
+            game_ended = False
+            # Save game data to a file
+            with open(f'game_data_{game_session}.json', 'w') as file:
+                json.dump(game_data, file)
+                    
+            print(f"Game data for game session {game_session} saved successfully!")
             score = reset_game()
 
             game_session += 1
