@@ -254,7 +254,6 @@ while run:
     screen.blit(background_img, (0, 0))
 
     bird_group.draw(screen)
-    bird_group.update()
 
     pipe_group.draw(screen)
 
