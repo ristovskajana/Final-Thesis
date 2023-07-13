@@ -2,6 +2,8 @@ import pygame
 import os
 import random
 import numpy as np
+import matplotlib.pyplot as pl
+import json
 
 pygame.init()
 
@@ -37,13 +39,14 @@ def reset_game():
 
 # List to store cumulative rewards for each episode
 episode_rewards = []
+average_rewards = []
 
 # Q-learning parameters
 epsilon = 0.3
 epsilon_decay = 0.00001
 epsilon_min = 0.1
 alpha = 0.45
-gamma = 0.7
+gamma = 0.9
 
 num_discrete_states = 250
 
@@ -65,9 +68,13 @@ mapping = dict(zip(combinations, integer_array))
 
 
 # Initialize episode records
-episode_rewards = []
+episode_scores = []
 episode_states = []  # Initialize episode states list
 episode_actions = []
+training_steps_per_episode = []
+average_rewards = []
+average_score = []
+convergance_policy = []
 
 
 
@@ -90,7 +97,7 @@ def discretize_vertical(value):
     bins = np.linspace(0, 1200, 25)  # Shift the bins to positive range
     shifted_value = value + 600  # Shift the value to positive range
     discretized_value = np.digitize(shifted_value, bins)
-    return discretized_value  
+    return discretized_value - 1
 
 def draw_pipe_line_horizontal(pipe):
     y_pos = pipe.rect.bottom + 170 # Y position of the pipe's bottom
@@ -113,9 +120,6 @@ def draw_bird_bottom(birdy):
     line_end = (screen_width, y_pos)  # Draw the line to the end of the screen
 
     pygame.draw.line(screen, (255, 0, 0), line_start, line_end, 2)
-        
-
-# 726
 
 # GAME VARIABLES
 font = pygame.font.SysFont('Bauhaus 93', 60)
@@ -307,6 +311,10 @@ q_table = np.load('q_table.npy') if os.path.isfile('q_table.npy') else q_table
 # Set the print options for numpy
 np.set_printoptions(suppress=True, precision=4)
 
+training_step = 1
+avg_reward = 0
+avg_score = 0
+
 run = True
 while run:
     clock.tick(fps)
@@ -315,7 +323,7 @@ while run:
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            run = False
+                run = False
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 # Ignore spacebar press event
@@ -344,11 +352,10 @@ while run:
         pipe_group.add(bottom_pipe)
         pipe_group.add(top_pipe)
         last_pipe = time_now
-
-    bird_group.update() 
     
     if not dead:
         if flappy.last_state == None:
+            flappy.update()
             flappy.update_state()
             flappy.last_state = flappy.state
             flappy.last_action = 0
@@ -382,6 +389,7 @@ while run:
             flying = False  
             dead = True
             next_state = None
+            reward = -1000
             flappy.update_q_table(flappy.last_state, flappy.action, -1000, next_state)
             # print("For state: ", flappy.last_state, " and action performed: ", flappy.action, " new q value is: ", q_table[flappy.last_state][flappy.action])
 
@@ -419,6 +427,9 @@ while run:
         # Update last state and last action
         flappy.last_state = flappy.state
 
+        training_step += 1
+        avg_reward += reward
+
         # Draw score
         draw_text(str(score), font, white, int(screen_width / 2), 20)
 
@@ -432,9 +443,21 @@ while run:
         # print("Q-table:")
         # print(q_table)  # Print the Q-table
         print("Episode: ", episode + 1)
+        episode_states.append(flappy.state)
+        episode_actions.append(action)
+        training_steps_per_episode.append(training_step)
+        # average_rewards.append(avg_reward)
+        # avg_score = training_step/score
+        # average_score.append(avg_score)
+
+        # Update episode rewards
+        episode_scores.append(score)
+
         episode += 1
         print("Current Score: ", score)
         score = reset_game()
+        training_step = 1
+        avg_reward = 0
         time_now = pygame.time.get_ticks()
         last_pipe = time_now - 2000
         if episode >= num_episodes:
@@ -462,5 +485,39 @@ while run:
     episode_actions.append(action)
 
     pygame.display.update()
+
+pl.scatter(range(len(episode_scores)), episode_scores)
+pl.xlabel("Training episode")
+pl.ylabel("Score")
+pl.title("Performance Analysis")
+pl.savefig("score_plot.png")  # Save the plot as an image file
+pl.show()
+
+pl.scatter(range(len(episode_scores)), training_steps_per_episode)
+pl.xlabel("Episode")
+pl.ylabel("Training steps per episode")
+pl.title("Training steps")
+pl.savefig("training_plot.png")  # Save the plot as an image file
+pl.show()
+
+pl.scatter(training_steps_per_episode, episode_scores)
+pl.xlabel("Training steps")
+pl.ylabel("Score")
+pl.title("Score/Training steps")
+pl.savefig("score_training_plot.png")  # Save the plot as an image file
+pl.show()
+
+
+
+
+# Save episode rewards as a JSON file
+with open("episode_scores.json", "w") as f:
+    json.dump(episode_scores, f)
+
+with open("training_steps.json", "w") as f:
+    json.dump(training_steps_per_episode, f)
+
+with open("episode_rewards.json", "w") as f:
+    json.dump(episode_rewards, f)
 
 pygame.quit()
