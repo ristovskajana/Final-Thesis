@@ -32,6 +32,9 @@ def run_game():
     num_episodes = 10000
     episode = 0 
 
+    # Set the print options for numpy
+    np.set_printoptions(suppress=True, precision=4)
+
     def reset_game():
         pipe_group.empty()
         flappy.rect.x = 100
@@ -509,41 +512,54 @@ def discretize_vertical(value):
     discretized_value = np.digitize(shifted_value, bins)
     return discretized_value - 1
 
-# Load the JSON data from a file
-with open('4game_data_70.json', 'r') as f:
-    data = json.load(f)
-
 done_training = False
 
-# Set the print options for numpy
-np.set_printoptions(suppress=True, precision=4)
+def process_json_file(name):
 
-# q table creation
-print("Observing user data")
-skip_first_entry = True  # Flag variable to skip the first entry
+    # Load the JSON data from a file
+    with open(name, 'r') as f:
+        data = json.load(f)
 
-for entry in data:
-    if skip_first_entry:
-        skip_first_entry = False
-        continue  # Skip the rest of the code and move to the next iteration
-    # Access the values for each state
-    current_horizontal = discretize_horizontal(entry['Current horizontal'])
-    current_vertical = discretize_vertical(entry['Current vertical'])
-    last_state = mapping[(current_horizontal, current_vertical)]
-    action = entry['Action']
-    reward = entry['Reward']
-    score = entry['Score']
+    # q table creation
+    print("Observing user data")
+    skip_first_entry = True  # Flag variable to skip the first entry
 
-    if reward == -1000:
-        next_state = None
-    else:
-        next_horizontal = discretize_horizontal(entry['Next horizontal'])
-        next_vertical = discretize_vertical(entry['Next vertical'])
-        next_state = mapping[(next_horizontal, next_vertical)]
+    for entry in data:
+        if skip_first_entry:
+            skip_first_entry = False
+            continue  # Skip the rest of the code and move to the next iteration
+        # Access the values for each state
+        current_horizontal = discretize_horizontal(entry['Current horizontal'])
+        current_vertical = discretize_vertical(entry['Current vertical'])
+        last_state = mapping[(current_horizontal, current_vertical)]
+        action = entry['Action']
+        reward = entry['Reward']
+        score = entry['Score']
 
-    update_q(last_state, action, reward, next_state)
+        if reward == -1000:
+            next_state = None
+        else:
+            next_horizontal = discretize_horizontal(entry['Next horizontal'])
+            next_vertical = discretize_vertical(entry['Next vertical'])
+            next_state = mapping[(next_horizontal, next_vertical)]
 
-# Save the Q-table after each episode
+        update_q(last_state, action, reward, next_state)
+
+
+
+
+# Specify the folder path
+folder_path = 'user_data'
+
+# Get all the JSON files in the folder
+json_files = [file for file in os.listdir(folder_path) if file.endswith('.json')]
+
+# Iterate over the JSON files and process each file
+for json_file in json_files:
+    file_path = os.path.join(folder_path, json_file)
+    process_json_file(file_path)
+
+ # Save the Q-table after each episode
 np.save('q_table.npy', q_table)
 
 # Load Q-table for the next episode
