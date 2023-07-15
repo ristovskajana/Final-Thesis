@@ -5,9 +5,40 @@ import numpy as np
 import matplotlib.pyplot as pl
 import json
 
+def save_and_plot():
+    pl.scatter(range(len(episode_scores)), episode_scores)
+    pl.xlabel("Training episode")
+    pl.ylabel("Score")
+    pl.title("Performance Analysis")
+    pl.savefig("score_plot.png")  # Save the plot as an image file
+    pl.show()
+
+    pl.scatter(range(len(episode_scores)), training_steps_per_episode)
+    pl.xlabel("Episode")
+    pl.ylabel("Training steps per episode")
+    pl.title("Training steps")
+    pl.savefig("training_plot.png")  # Save the plot as an image file
+    pl.show()
+
+    pl.scatter(training_steps_per_episode, episode_scores)
+    pl.xlabel("Training steps")
+    pl.ylabel("Score")
+    pl.title("Score/Training steps")
+    pl.savefig("score_training_plot.png")  # Save the plot as an image file
+    pl.show()
+
+
+    # Save episode rewards as a JSON file
+    with open("episode_scores.json", "w") as f:
+        json.dump(episode_scores, f)
+
+    with open("training_steps.json", "w") as f:
+        json.dump(training_steps_per_episode, f)
+
 
 def run_game():
     global q_table 
+    global total_training_steps
     pygame.init()
  
     screen_width = 864
@@ -22,7 +53,6 @@ def run_game():
     # LOADING ALL IMAGES
     background_img = pygame.image.load('img/bg.png')
     ground_img = pygame.image.load('img/ground.png')
-    button_img = pygame.image.load('img/restart.png')
 
     def draw_text(text, font, color, x, y):
         img = font.render(text, True, color)
@@ -39,10 +69,6 @@ def run_game():
 
         score = 0
         return score
-
-    # List to store cumulative rewards for each episode
-    episode_rewards = []
-    average_rewards = []
 
     def draw_pipe_line_horizontal(pipe):
         y_pos = pipe.rect.bottom + 170 # Y position of the pipe's bottom
@@ -343,7 +369,7 @@ def run_game():
 
             # Check if bird has passed the pipe
             for pipe in pipe_group:
-                if pipe.rect.right < (flappy.rect.right + 35) and pipe.passed == False:
+                if pipe.rect.right + 35 < flappy.rect.right and pipe.passed == False:
                     pipe.passed = True
                     pass_pipe = True
 
@@ -360,6 +386,22 @@ def run_game():
 
                 if score > high_score:
                     high_score = score
+
+                if score >= max_score:
+                    draw_text(str(score), font, white, int(screen_width / 2), 20)
+                    print(" -----------------------------New Episode--------------------------------------------")
+                    print("Episode: ", episode + 1)
+                    episode_states.append(flappy.state)
+                    episode_actions.append(action)
+                    training_steps_per_episode.append(training_step)
+                    episode_scores.append(score)
+                    print("Current Score: ", score)
+                    print("High Score:", high_score)
+                    save_and_plot()
+                    total_training_steps += training_step
+                    print("Total training steps: ", total_training_steps)
+                    pygame.quit()
+                    run = False
 
             # Update last state and last action
             flappy.last_state = flappy.state
@@ -389,6 +431,7 @@ def run_game():
 
             # Update episode rewards
             episode_scores.append(score)
+            total_training_steps += training_step
 
             episode += 1
             print("Current Score: ", score)
@@ -447,9 +490,6 @@ def run_game():
     with open("training_steps.json", "w") as f:
         json.dump(training_steps_per_episode, f)
 
-    with open("episode_rewards.json", "w") as f:
-        json.dump(episode_rewards, f)
-
     pygame.quit()
 
 alpha = 0.45
@@ -488,6 +528,9 @@ average_rewards = []
 average_score = []
 convergance_policy = []
 
+total_training_steps = 0
+max_score = 100
+
 def discretize_horizontal(value):
     bins1 = np.linspace(0, 400, 7)
     bins2 = np.linspace(401, 790, 3)
@@ -510,7 +553,7 @@ def discretize_vertical(value):
     return discretized_value - 1
 
 # Load the JSON data from a file
-with open('4game_data_70.json', 'r') as f:
+with open('game_data.json', 'r') as f:
     data = json.load(f)
 
 done_training = False
@@ -521,6 +564,7 @@ np.set_printoptions(suppress=True, precision=4)
 # q table creation
 print("Observing user data")
 skip_first_entry = True  # Flag variable to skip the first entry
+recording_training_steps = 0
 
 for entry in data:
     if skip_first_entry:
@@ -541,8 +585,14 @@ for entry in data:
         next_vertical = discretize_vertical(entry['Next vertical'])
         next_state = mapping[(next_horizontal, next_vertical)]
 
+    recording_training_steps += 1
     update_q(last_state, action, reward, next_state)
 
+
+training_steps_per_episode.append(recording_training_steps)
+total_training_steps += recording_training_steps
+
+episode_scores.append(score)
 # Save the Q-table after each episode
 np.save('q_table.npy', q_table)
 

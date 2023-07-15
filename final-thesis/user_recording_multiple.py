@@ -5,6 +5,36 @@ import numpy as np
 import matplotlib.pyplot as pl
 import json
 
+def save_and_plot():
+    pl.scatter(range(len(episode_scores)), episode_scores)
+    pl.xlabel("Training episode")
+    pl.ylabel("Score")
+    pl.title("Performance Analysis")
+    pl.savefig("score_plot.png")  # Save the plot as an image file
+    pl.show()
+
+    pl.scatter(range(len(episode_scores)), training_steps_per_episode)
+    pl.xlabel("Episode")
+    pl.ylabel("Training steps per episode")
+    pl.title("Training steps")
+    pl.savefig("training_plot.png")  # Save the plot as an image file
+    pl.show()
+
+    pl.scatter(training_steps_per_episode, episode_scores)
+    pl.xlabel("Training steps")
+    pl.ylabel("Score")
+    pl.title("Score/Training steps")
+    pl.savefig("score_training_plot.png")  # Save the plot as an image file
+    pl.show()
+
+
+    # Save episode rewards as a JSON file
+    with open("episode_scores.json", "w") as f:
+        json.dump(episode_scores, f)
+
+    with open("training_steps.json", "w") as f:
+        json.dump(training_steps_per_episode, f)
+
 
 def run_game():
     global q_table 
@@ -346,7 +376,7 @@ def run_game():
 
             # Check if bird has passed the pipe
             for pipe in pipe_group:
-                if pipe.rect.right < (flappy.rect.right + 35) and pipe.passed == False:
+                if pipe.rect.right + 35< flappy.rect.right and pipe.passed == False:
                     pipe.passed = True
                     pass_pipe = True
 
@@ -386,6 +416,7 @@ def run_game():
             episode_states.append(flappy.state)
             episode_actions.append(action)
             training_steps_per_episode.append(training_step)
+            total_training_steps += training_step
             # average_rewards.append(avg_reward)
             # avg_score = training_step/score
             # average_score.append(avg_score)
@@ -490,6 +521,8 @@ training_steps_per_episode = []
 average_rewards = []
 average_score = []
 convergance_policy = []
+
+max_score = 20
 
 def discretize_horizontal(value):
     bins1 = np.linspace(0, 400, 7)
