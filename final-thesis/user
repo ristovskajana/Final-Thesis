@@ -51,25 +51,17 @@ def reset_game():
     return score
 
 def discretize_horizontal(value):
-    bins1 = np.linspace(0, 400, 7)
-    bins2 = np.linspace(401, 790, 3)
-    if value <= 400:
-        discretized_value = np.digitize(value, bins1)
-    else:
-        if np.digitize(value, bins2) == 1:
-            discretized_value = 7
-        if np.digitize(value, bins2) == 2:
-            discretized_value = 8
-        if np.digitize(value, bins2) == 3:
-            discretized_value = 9
-    return discretized_value # Subtract 1 to convert bin index to range 0-8
+    bins = np.linspace(0, 430, 10)
+    discretized_value = np.digitize(value, bins)
+    return discretized_value - 1 # Subtract 1 to convert bin index to range 0-8
 
 
 def discretize_vertical(value):
     bins = np.linspace(0, 1200, 25)  # Shift the bins to positive range
     shifted_value = value + 600  # Shift the value to positive range
     discretized_value = np.digitize(shifted_value, bins)
-    return discretized_value -1 
+    return discretized_value - 1
+
 
 font = pygame.font.SysFont('Bauhaus 93', 60)
 white = (255, 255, 255)
@@ -264,6 +256,13 @@ while run:
     pipe_group.draw(screen)
 
     screen.blit(ground_img, (scroll_ground, 768))
+    if len(pipe_group) == 0:
+        pipe_height = random.randint(-100, 100)
+        initial_bottom_pipe = Pipe(screen_width - 400, int(screen_height / 2) + pipe_height, -1)
+        initial_top_pipe = Pipe(screen_width - 400, int(screen_height/2) + pipe_height, 1)
+        pipe_group.add(initial_bottom_pipe)
+        pipe_group.add(initial_top_pipe)
+
 
     if len(pipe_group) > 0:
         if bird_group.sprites()[0].rect.left > pipe_group.sprites()[0].rect.left \

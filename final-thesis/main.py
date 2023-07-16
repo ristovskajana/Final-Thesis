@@ -185,6 +185,12 @@ while run:
 
     # create the ground to be scrolable
     screen.blit(ground_img, (scroll_ground, 768))
+    if len(pipe_group) == 0:
+        pipe_height = random.randint(-100, 100)
+        initial_bottom_pipe = Pipe(screen_width - 400, int(screen_height / 2) + pipe_height, -1)
+        initial_top_pipe = Pipe(screen_width - 400, int(screen_height/2) + pipe_height, 1)
+        pipe_group.add(initial_bottom_pipe)
+        pipe_group.add(initial_top_pipe)
 
     # check the score
     if len(pipe_group) > 0:
@@ -211,7 +217,7 @@ while run:
     
     # game is running
     if dead == False and flying == True:
-       
+
         # generate new pipes
         time_now = pygame.time.get_ticks()
         if time_now - last_pipe > pipe_frequency:

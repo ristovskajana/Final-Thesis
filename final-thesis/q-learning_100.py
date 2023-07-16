@@ -47,7 +47,7 @@ average_rewards = []
 epsilon = 0.3
 epsilon_decay = 0.00001
 epsilon_min = 0.1
-alpha = 0.45
+alpha = 0.7
 gamma = 0.9
 
 num_discrete_states = 250
@@ -81,18 +81,9 @@ convergance_policy = []
 max_score = 100
 
 def discretize_horizontal(value):
-    bins1 = np.linspace(0, 400, 7)
-    bins2 = np.linspace(401, 790, 3)
-    if value <= 400:
-        discretized_value = np.digitize(value, bins1)
-    else:
-        if np.digitize(value, bins2) == 1:
-            discretized_value = 7
-        if np.digitize(value, bins2) == 2:
-            discretized_value = 8
-        if np.digitize(value, bins2) == 3:
-            discretized_value = 9
-    return discretized_value # Subtract 1 to convert bin index to range 0-8
+    bins = np.linspace(0, 430, 10)
+    discretized_value = np.digitize(value, bins)
+    return discretized_value - 1 # Subtract 1 to convert bin index to range 0-8
 
 
 def discretize_vertical(value):
@@ -232,7 +223,9 @@ class Bird(pygame.sprite.Sprite):
             self.image = pygame.transform.rotate(self.images[self.index], self.vel_y * -2)
             # self.rect = self.image.get_rect(center=(self.rect.centerx, self.rect.centery))
 
-        self.rect.x = 100  # Set the desired X position here
+        self.rect.x = 100
+        
+          # Set the desired X position here
 
     def jump(self):
         self.vel_y = -10
@@ -377,6 +370,13 @@ while run:
     bird_group.draw(screen)
     draw_bird_bottom(flappy)  
 
+    if len(pipe_group) == 0:
+        pipe_height = random.randint(-100, 100)
+        initial_bottom_pipe = Pipe(screen_width - 400, int(screen_height / 2) + pipe_height, -1)
+        initial_top_pipe = Pipe(screen_width - 400, int(screen_height/2) + pipe_height, 1)
+        pipe_group.add(initial_bottom_pipe)
+        pipe_group.add(initial_top_pipe)
+    
     # generate new pipes
     time_now = pygame.time.get_ticks()
     if time_now - last_pipe > pipe_frequency:
@@ -386,6 +386,7 @@ while run:
         pipe_group.add(bottom_pipe)
         pipe_group.add(top_pipe)
         last_pipe = time_now
+
     
     if not dead:
         if flappy.last_state == None:
@@ -393,7 +394,7 @@ while run:
             flappy.update_state()
             flappy.last_state = flappy.state
             flappy.last_action = 0
-            reward = 0
+            reward = 10
             flappy.update_q_table(flappy.last_state, flappy.last_action, reward, flappy.state)
             action = flappy.choose_action(q_table, flappy.state)
 
