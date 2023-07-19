@@ -35,9 +35,8 @@ def save_and_plot():
     with open("training_steps.json", "w") as f:
         json.dump(training_steps_per_episode, f)
 
-
 def run_game():
-    global q_table 
+    global total_training_steps
     pygame.init()
  
     screen_width = 864
@@ -46,13 +45,14 @@ def run_game():
     clock = pygame.time.Clock()
     fps = 60
 
+    q_table = np.zeros((num_discrete_states, num_actions), dtype= float)
+
     screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption('Flappy Bird')
 
     # LOADING ALL IMAGES
     background_img = pygame.image.load('img/bg.png')
     ground_img = pygame.image.load('img/ground.png')
-    button_img = pygame.image.load('img/restart.png')
 
     def draw_text(text, font, color, x, y):
         img = font.render(text, True, color)
@@ -62,9 +62,6 @@ def run_game():
     num_episodes = 10000
     episode = 0 
 
-    # Set the print options for numpy
-    np.set_printoptions(suppress=True, precision=4)
-
     def reset_game():
         pipe_group.empty()
         flappy.rect.x = 100
@@ -72,10 +69,6 @@ def run_game():
 
         score = 0
         return score
-
-    # List to store cumulative rewards for each episode
-    episode_rewards = []
-    average_rewards = []
 
     def draw_pipe_line_horizontal(pipe):
         y_pos = pipe.rect.bottom + 170 # Y position of the pipe's bottom
@@ -193,7 +186,10 @@ def run_game():
             discrete_horizontal_distance = discretize_horizontal(horizontal_distance)
             discrete_vertical_distance = discretize_vertical(vertical_distance)
 
-            self.state = mapping[(discrete_horizontal_distance, discrete_vertical_distance)]
+            if discrete_horizontal_distance >= 100:
+                self.state = discrete_horizontal_distance + 75
+            else: 
+                self.state = mapping[(discrete_horizontal_distance, discrete_vertical_distance)]
             # print("State:", self.state, " horizontal: ", discrete_horizontal_distance, " verical: ", discrete_vertical_distance)
 
         def get_closest_lower_pipe(self):
@@ -234,12 +230,35 @@ def run_game():
                 return float('inf')
         
         def choose_action(self, q_table, state):
+            if not np.isnan(q_table_user[state][1]):
+                if q_table_user[state][1] > q_table_user[state][0]:
+                    int_choice = 1
+                    higher = q_table_user[state][1]
+                else:
+                    int_choice = 0
+                    higher = q_table_user[state][0]
+            else: 
+                higher = np.nan
             jump_value = q_table[state][1]  # Value if we jump
             no_jump_value = q_table[state][0]   # Value if we don't jump
             if (jump_value > no_jump_value): 
-                choice = 1
+                if not np.isnan(higher): 
+                    if(higher > jump_value):
+                        choice = int_choice
+                    else:
+                        choice = 1
+                else:
+                    choice = 1
             else:
-                choice = 0
+                if not np.isnan(higher): 
+                    if(higher > no_jump_value):
+                        choice = int_choice
+                    else:
+                        choice = 0
+                else:
+                    choice = 0
+            q_table_user[state][0] = np.nan
+            q_table_user[state][1] = np.nan    
             return choice
 
         def update_q_table(self, state, action, reward, next_state, q_table):
@@ -313,6 +332,13 @@ def run_game():
         bird_group.draw(screen)
         draw_bird_bottom(flappy)  
 
+        if len(pipe_group) == 0:
+            pipe_height = random.randint(-100, 100)
+            initial_bottom_pipe = Pipe(screen_width - 400, int(screen_height / 2) + pipe_height, -1)
+            initial_top_pipe = Pipe(screen_width - 400, int(screen_height/2) + pipe_height, 1)
+            pipe_group.add(initial_bottom_pipe)
+            pipe_group.add(initial_top_pipe)
+
         # generate new pipes
         time_now = pygame.time.get_ticks()
         if time_now - last_pipe > pipe_frequency:
@@ -376,7 +402,7 @@ def run_game():
 
             # Check if bird has passed the pipe
             for pipe in pipe_group:
-                if pipe.rect.right + 35< flappy.rect.right and pipe.passed == False:
+                if pipe.rect.right + 35 < flappy.rect.right and pipe.passed == False:
                     pipe.passed = True
                     pass_pipe = True
 
@@ -393,6 +419,22 @@ def run_game():
 
                 if score > high_score:
                     high_score = score
+
+                if score >= max_score:
+                    draw_text(str(score), font, white, int(screen_width / 2), 20)
+                    print(" -----------------------------New Episode--------------------------------------------")
+                    print("Episode: ", episode + 1)
+                    episode_states.append(flappy.state)
+                    episode_actions.append(action)
+                    training_steps_per_episode.append(training_step)
+                    episode_scores.append(score)
+                    print("Current Score: ", score)
+                    print("High Score:", high_score)
+                    save_and_plot()
+                    total_training_steps += training_step
+                    print("Total training steps: ", total_training_steps)
+                    pygame.quit()
+                    run = False
 
             # Update last state and last action
             flappy.last_state = flappy.state
@@ -416,13 +458,13 @@ def run_game():
             episode_states.append(flappy.state)
             episode_actions.append(action)
             training_steps_per_episode.append(training_step)
-            total_training_steps += training_step
             # average_rewards.append(avg_reward)
             # avg_score = training_step/score
             # average_score.append(avg_score)
 
             # Update episode rewards
             episode_scores.append(score)
+            total_training_steps += training_step
 
             episode += 1
             print("Current Score: ", score)
@@ -437,9 +479,6 @@ def run_game():
 
             # Save the Q-table after each episode
             np.save('q_table.npy', q_table)
-
-            # Load Q-table for the next episode
-            q_table = np.load('q_table.npy')
 
             # Print dimensions of the Q-table
             # print("Q-table dimensions:", q_table.shape)
@@ -481,9 +520,6 @@ def run_game():
     with open("training_steps.json", "w") as f:
         json.dump(training_steps_per_episode, f)
 
-    with open("episode_rewards.json", "w") as f:
-        json.dump(episode_rewards, f)
-
     pygame.quit()
 
 alpha = 0.45
@@ -495,7 +531,7 @@ num_actions = 2  # Two possible actions: 0 for not jumping, 1 for jumping
 
 # Initialize Q-table
 discretized_states = np.zeros(num_discrete_states)
-q_table = np.zeros((num_discrete_states, num_actions), dtype= float)
+q_table_user = np.zeros((num_discrete_states, num_actions), dtype= float)
 
 combinations = []
 for x in range(10):
@@ -508,10 +544,10 @@ mapping = dict(zip(combinations, integer_array))
 
 def update_q(state, action, reward, next_state):
     if next_state is not None:
-        max_q = max(q_table[next_state]) if q_table[next_state].size > 0 else 0
-        q_table[state][action] += alpha * (reward + gamma * max_q - q_table[state][action])
+        max_q = max(q_table_user[next_state]) if q_table_user[next_state].size > 0 else 0
+        q_table_user[state][action] += 1 * (reward + 0.9 * max_q - q_table_user[state][action])
     else:
-        q_table[state][action] = reward
+        q_table_user[state][action] = reward
 
 # Initialize episode records
 episode_scores = []
@@ -522,21 +558,13 @@ average_rewards = []
 average_score = []
 convergance_policy = []
 
-max_score = 20
+total_training_steps = 0
+max_score = 100
 
 def discretize_horizontal(value):
-    bins1 = np.linspace(0, 400, 7)
-    bins2 = np.linspace(401, 790, 3)
-    if value <= 400:
-        discretized_value = np.digitize(value, bins1)
-    else:
-        if np.digitize(value, bins2) == 1:
-            discretized_value = 7
-        if np.digitize(value, bins2) == 2:
-            discretized_value = 8
-        if np.digitize(value, bins2) == 3:
-            discretized_value = 9
-    return discretized_value # Subtract 1 to convert bin index to range 0-8
+    bins = np.linspace(0, 430, 10)
+    discretized_value = np.digitize(value, bins)
+    return discretized_value - 1 # Subtract 1 to convert bin index to range 0-8
 
 
 def discretize_vertical(value):
@@ -547,16 +575,18 @@ def discretize_vertical(value):
 
 done_training = False
 
-def process_json_file(name):
+# Set the print options for numpy
+np.set_printoptions(suppress=True, precision=4)
 
-    # Load the JSON data from a file
-    with open(name, 'r') as f:
+# q table creation
+print("Observing user data")
+recording_training_steps = 0
+# Function to load and process a data file
+def load_user_data(file_path, user_lookup_table):
+    with open(file_path, 'r') as f:
         data = json.load(f)
 
-    # q table creation
-    print("Observing user data")
-    skip_first_entry = True  # Flag variable to skip the first entry
-
+    skip_first_entry = True
     for entry in data:
         if skip_first_entry:
             skip_first_entry = False
@@ -575,28 +605,16 @@ def process_json_file(name):
             next_horizontal = discretize_horizontal(entry['Next horizontal'])
             next_vertical = discretize_vertical(entry['Next vertical'])
             next_state = mapping[(next_horizontal, next_vertical)]
-
         update_q(last_state, action, reward, next_state)
 
+# Load and process each data file
+data_files = ["game_data_2.json"]  # Add the names of your data files here
 
+for file_path in data_files:
+    load_user_data(file_path, q_table_user)
 
-
-# Specify the folder path
-folder_path = 'user_data'
-
-# Get all the JSON files in the folder
-json_files = [file for file in os.listdir(folder_path) if file.endswith('.json')]
-
-# Iterate over the JSON files and process each file
-for json_file in json_files:
-    file_path = os.path.join(folder_path, json_file)
-    process_json_file(file_path)
-
- # Save the Q-table after each episode
-np.save('q_table.npy', q_table)
-
-# Load Q-table for the next episode
-q_table = np.load('q_table.npy')
+# Save the Q-table after each episode
+np.save('q_table_user.npy', q_table_user)
 
 print("Observing done")
 

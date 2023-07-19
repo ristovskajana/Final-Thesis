@@ -47,7 +47,7 @@ average_rewards = []
 epsilon = 0.3
 epsilon_decay = 0.00001
 epsilon_min = 0.1
-alpha = 0.7
+alpha = 0.45
 gamma = 0.9
 
 num_discrete_states = 250
