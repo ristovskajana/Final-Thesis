@@ -542,10 +542,10 @@ integer_array = list(range(250))
 
 mapping = dict(zip(combinations, integer_array))
 
-def update_q(state, action, reward, next_state):
+def update_q(state, action, reward, next_state, q_table_user):
     if next_state is not None:
         max_q = max(q_table_user[next_state]) if q_table_user[next_state].size > 0 else 0
-        q_table_user[state][action] += 1 * (reward + 0.9 * max_q - q_table_user[state][action])
+        q_table_user[state][action] += 0.99 * (reward + gamma * max_q - q_table_user[state][action])
     else:
         q_table_user[state][action] = reward
 
@@ -559,7 +559,7 @@ average_score = []
 convergance_policy = []
 
 total_training_steps = 0
-max_score = 100
+max_score = 10000
 
 def discretize_horizontal(value):
     bins = np.linspace(0, 430, 10)
@@ -582,7 +582,7 @@ np.set_printoptions(suppress=True, precision=4)
 print("Observing user data")
 recording_training_steps = 0
 # Function to load and process a data file
-def load_user_data(file_path, user_lookup_table):
+def load_user_data(file_path):
     with open(file_path, 'r') as f:
         data = json.load(f)
 
@@ -605,18 +605,18 @@ def load_user_data(file_path, user_lookup_table):
             next_horizontal = discretize_horizontal(entry['Next horizontal'])
             next_vertical = discretize_vertical(entry['Next vertical'])
             next_state = mapping[(next_horizontal, next_vertical)]
-        update_q(last_state, action, reward, next_state)
+        update_q(last_state, action, reward, next_state, q_table_user)
 
 # Load and process each data file
-data_files = ["game_data_2.json"]  # Add the names of your data files here
+data_files = ["game_data_1.json"]  # Add the names of your data files here
 
 for file_path in data_files:
-    load_user_data(file_path, q_table_user)
+    for i in range(2):
+        load_user_data(file_path)
+        print(q_table_user)
 
 # Save the Q-table after each episode
 np.save('q_table_user.npy', q_table_user)
-
 print("Observing done")
 
 run_game()
-
