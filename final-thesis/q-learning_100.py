@@ -47,7 +47,7 @@ average_rewards = []
 epsilon = 0.3
 epsilon_decay = 0.00001
 epsilon_min = 0.1
-alpha = 0.45
+alpha = 0.7
 gamma = 0.9
 
 num_discrete_states = 250
@@ -78,10 +78,10 @@ average_rewards = []
 average_score = []
 convergance_policy = []
 
-max_score = 100
+max_score = 200
 
 def discretize_horizontal(value):
-    bins = np.linspace(0, 430, 10)
+    bins = np.linspace(0, 430, 10)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
     discretized_value = np.digitize(value, bins)
     return discretized_value - 1 # Subtract 1 to convert bin index to range 0-8
 
